@@ -1,0 +1,9 @@
+anthropic>=0.40.0
+SpeechRecognition>=3.10.0
+PyAudio>=0.2.14
+pyttsx3>=2.90
+python-dotenv>=1.0.0
+
+# Optional — for ElevenLabs high-quality voice
+elevenlabs>=1.9.0
+pygame>=2.6.0
