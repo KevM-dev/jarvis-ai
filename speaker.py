@@ -1,10 +1,10 @@
 """
 speaker.py — Text-to-speech using ElevenLabs (primary) with pyttsx3 fallback.
+ElevenLabs audio is played via sounddevice using raw PCM — no PyAudio or pygame needed.
 """
 
-import io
-import os
 import threading
+import numpy as np
 
 
 class Speaker:
@@ -53,20 +53,21 @@ class Speaker:
 
     def _speak_elevenlabs(self, text: str):
         try:
-            import pygame
-            audio = self.el_client.text_to_speech.convert(
+            import sounddevice as sd
+
+            # Request raw PCM — no decoding library needed
+            audio_chunks = self.el_client.text_to_speech.convert(
                 voice_id=self.voice_id,
                 text=text,
                 model_id="eleven_multilingual_v2",
-                output_format="mp3_44100_128",
+                output_format="pcm_44100",  # 44100 Hz, 16-bit mono PCM
             )
-            audio_bytes = b"".join(audio)
+            pcm_data = b"".join(audio_chunks)
 
-            pygame.mixer.init()
-            pygame.mixer.music.load(io.BytesIO(audio_bytes))
-            pygame.mixer.music.play()
-            while pygame.mixer.music.get_busy():
-                pygame.time.wait(50)
+            # Convert bytes to int16 numpy array and play
+            audio_array = np.frombuffer(pcm_data, dtype=np.int16)
+            sd.play(audio_array, samplerate=44100)
+            sd.wait()
         except Exception as e:
             print(f"[ElevenLabs error] {e} — falling back to pyttsx3.")
             self.use_elevenlabs = False
