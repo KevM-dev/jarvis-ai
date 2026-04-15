@@ -1,8 +1,10 @@
 """
-brain.py — Claude API integration with conversation memory.
+brain.py — AI brain using Groq (free tier) with conversation memory.
+Groq free tier: 6,000 requests/day, no credit card needed.
+Sign up at: https://console.groq.com
 """
 
-import anthropic
+from groq import Groq
 
 SYSTEM_PROMPT = """You are JARVIS, an advanced AI assistant similar to the one from Iron Man.
 Your responses must be:
@@ -16,8 +18,8 @@ Never use symbols like dashes, asterisks, or hashes in your response."""
 
 
 class Brain:
-    def __init__(self, api_key: str, model: str = "claude-sonnet-4-6"):
-        self.client = anthropic.Anthropic(api_key=api_key)
+    def __init__(self, api_key: str, model: str = "llama-3.3-70b-versatile"):
+        self.client = Groq(api_key=api_key)
         self.model = model
         self.history: list[dict] = []
         self.max_history = 20  # keep last 20 turns to avoid token bloat
@@ -29,14 +31,13 @@ class Brain:
         if len(self.history) > self.max_history:
             self.history = self.history[-self.max_history:]
 
-        response = self.client.messages.create(
+        response = self.client.chat.completions.create(
             model=self.model,
             max_tokens=400,
-            system=SYSTEM_PROMPT,
-            messages=self.history,
+            messages=[{"role": "system", "content": SYSTEM_PROMPT}] + self.history,
         )
 
-        reply = response.content[0].text.strip()
+        reply = response.choices[0].message.content.strip()
         self.history.append({"role": "assistant", "content": reply})
         return reply
 

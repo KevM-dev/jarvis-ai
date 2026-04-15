@@ -16,11 +16,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── Validate required config ──────────────────────────────────────────────────
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")  # Optional
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-if not ANTHROPIC_API_KEY:
-    print("ERROR: ANTHROPIC_API_KEY is not set. Add it to your .env file.")
+if not GROQ_API_KEY:
+    print("ERROR: GROQ_API_KEY is not set. Add it to your .env file.")
+    print("Get a free key at: https://console.groq.com")
     sys.exit(1)
 
 # ── Import modules ────────────────────────────────────────────────────────────
@@ -52,12 +52,12 @@ def handle_local_command(text: str, brain: Brain, speaker: Speaker) -> bool:
 def main():
     print("=" * 50)
     print("  JARVIS — AI Voice Assistant")
-    print("  Powered by Claude & ElevenLabs")
+    print("  Powered by Groq (Llama 3.3) — 100% Free")
     print("=" * 50)
 
     listener = Listener(wake_words=["jarvis", "hey jarvis", "hi jarvis"])
-    speaker = Speaker(elevenlabs_api_key=ELEVENLABS_API_KEY)
-    brain = Brain(api_key=ANTHROPIC_API_KEY)
+    speaker = Speaker()
+    brain = Brain(api_key=GROQ_API_KEY)
 
     speaker.speak("JARVIS online. Say 'Hey Jarvis' to activate me.")
 
