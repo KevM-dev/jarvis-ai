@@ -2,15 +2,14 @@
 main.py — JARVIS voice assistant entry point.
 
 Flow:
-  1. Idle: listen for wake word ("Hey Jarvis")
-  2. Activated: listen for full voice command
-  3. Process command with Claude AI
-  4. Speak response aloud
-  5. Repeat
+  - GUI runs on the main thread (required by Tkinter)
+  - Voice loop runs on a background daemon thread
+  - GUI state is updated thread-safely via a queue
 """
 
 import os
 import sys
+import threading
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -23,53 +22,30 @@ if not GROQ_API_KEY:
     print("Get a free key at: https://console.groq.com")
     sys.exit(1)
 
-# ── Import modules ────────────────────────────────────────────────────────────
+# ── Imports ───────────────────────────────────────────────────────────────────
 from brain import Brain
 from listener import Listener
 from speaker import Speaker
+from gui import JarvisGUI
 
-# ── Commands that exit the loop ───────────────────────────────────────────────
 EXIT_PHRASES = {"goodbye", "shut down", "power off", "exit", "quit", "that's all"}
 
-# ── Commands handled locally ──────────────────────────────────────────────────
-def handle_local_command(text: str, brain: Brain, speaker: Speaker) -> bool:
-    """
-    Handle built-in commands without hitting the API.
-    Returns True if the command was handled locally.
-    """
-    if any(phrase in text for phrase in EXIT_PHRASES):
-        speaker.speak("Goodbye. JARVIS going offline.")
-        return True  # signal to exit
 
-    if "clear memory" in text or "forget everything" in text:
-        msg = brain.clear_memory()
-        speaker.speak(msg)
-        return False  # handled but keep running
+# ── Voice loop (runs in background thread) ────────────────────────────────────
 
-    return False  # not handled locally
-
-
-def main():
-    print("=" * 50)
-    print("  JARVIS — AI Voice Assistant")
-    print("  Powered by Groq (Llama 3.3) — 100% Free")
-    print("=" * 50)
-
-    listener = Listener(wake_words=["jarvis", "hey jarvis", "hi jarvis"])
-    speaker = Speaker()
-    brain = Brain(api_key=GROQ_API_KEY)
-
-    speaker.speak("JARVIS online. Say 'Hey Jarvis' to activate me.")
-
-    print("\nWaiting for wake word... (say 'Hey Jarvis')\n")
+def voice_loop(gui: JarvisGUI, brain: Brain, listener: Listener, speaker: Speaker):
+    speaker.speak("JARVIS online. Say Hey Jarvis to activate me.")
 
     while True:
         try:
-            # ── Phase 1: Wait for wake word ───────────────────────────────────
+            # ── Idle: wait for wake word ──────────────────────────────────────
+            gui.set_status("STANDBY")
+
             if not listener.listen_for_wake_word():
                 continue
 
-            # ── Phase 2: Wake word detected — listen for command ──────────────
+            # ── Activated: listen for command ─────────────────────────────────
+            gui.set_status("LISTENING")
             speaker.speak("Yes?")
 
             command = listener.listen_for_command()
@@ -78,24 +54,52 @@ def main():
                 speaker.speak("I didn't catch that. Say Hey Jarvis to try again.")
                 continue
 
+            gui.set_texts(command=command, response="")
             print(f"You: {command}")
 
-            # ── Phase 3: Check for local commands ─────────────────────────────
-            should_exit = handle_local_command(command, brain, speaker)
-            if should_exit:
+            # ── Built-in commands ─────────────────────────────────────────────
+            if any(phrase in command for phrase in EXIT_PHRASES):
+                gui.set_status("STANDBY")
+                gui.set_texts(response="Goodbye. Going offline.")
+                speaker.speak("Goodbye. JARVIS going offline.")
                 break
 
-            # ── Phase 4: Send to Claude and speak response ────────────────────
+            if "clear memory" in command or "forget everything" in command:
+                brain.clear_memory()
+                reply = "Memory cleared. Starting fresh."
+                gui.set_texts(response=reply)
+                speaker.speak(reply)
+                continue
+
+            # ── Ask Claude / Groq ─────────────────────────────────────────────
+            gui.set_status("THINKING")
             response = brain.think(command)
+
+            gui.set_texts(response=response)
+            gui.set_status("SPEAKING")
             speaker.speak(response)
 
-        except KeyboardInterrupt:
-            speaker.speak("Interrupted. JARVIS going offline.")
-            print("\nShutting down.")
-            break
         except Exception as e:
-            print(f"[Unexpected error] {e}")
-            speaker.speak("I encountered an error. Please try again.")
+            print(f"[Error] {e}")
+            gui.set_status("STANDBY")
+
+
+# ── Entry point ───────────────────────────────────────────────────────────────
+
+def main():
+    gui      = JarvisGUI()
+    brain    = Brain(api_key=GROQ_API_KEY)
+    listener = Listener(wake_words=["jarvis", "hey jarvis", "hi jarvis"])
+    speaker  = Speaker()
+
+    t = threading.Thread(
+        target=voice_loop,
+        args=(gui, brain, listener, speaker),
+        daemon=True,
+    )
+    t.start()
+
+    gui.run()   # blocks on main thread until window is closed
 
 
 if __name__ == "__main__":
